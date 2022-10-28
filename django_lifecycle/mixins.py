@@ -85,20 +85,23 @@ class LifecycleModelMixin(object):
     def _diff_with_initial(self) -> dict:
         initial = self._initial_state
         current = self._snapshot_state()
-        diffs = []
+        diffs = [
+            (k, (v, current[k]))
+            for k, v in initial.items()
+            if k in current and v != current[k]
+        ]
 
-        for k, v in initial.items():
-            if k in current and v != current[k]:
-                diffs.append((k, (v, current[k])))
 
         return dict(diffs)
 
     def _sanitize_field_name(self, field_name: str) -> str:
         try:
             internal_type = self._meta.get_field(field_name).get_internal_type()
-            if internal_type == "ForeignKey" or internal_type == "OneToOneField":
-                if not field_name.endswith("_id"):
-                    return field_name + "_id"
+            if internal_type in [
+                "ForeignKey",
+                "OneToOneField",
+            ] and not field_name.endswith("_id"):
+                return f"{field_name}_id"
         except FieldDoesNotExist:
             pass
 
@@ -135,10 +138,7 @@ class LifecycleModelMixin(object):
         changed = self._diff_with_initial.keys()
         field_name = self._sanitize_field_name(field_name)
 
-        if field_name in changed:
-            return True
-
-        return False
+        return field_name in changed
 
     def _clear_watched_fk_model_cache(self):
         """ """
@@ -212,9 +212,11 @@ class LifecycleModelMixin(object):
         watched = []  # List[str]
 
         for method in cls._potentially_hooked_methods():
-            for hook_config in method._hooked:
-                if hook_config.when is not None and "." in hook_config.when:
-                    watched.append(hook_config.when)
+            watched.extend(
+                hook_config.when
+                for hook_config in method._hooked
+                if hook_config.when is not None and "." in hook_config.when
+            )
 
         return watched
 
@@ -240,35 +242,28 @@ class LifecycleModelMixin(object):
                 if callback_specs.hook != hook:
                     continue
 
-                when_field = callback_specs.when
                 when_any_field = callback_specs.when_any
-                update_fields = kwargs.get("update_fields", None)
+                update_fields = kwargs.get("update_fields")
                 is_partial_fields_update = update_fields is not None
 
-                if when_field:
+                if when_field := callback_specs.when:
                     if not self._check_callback_conditions(
                         when_field,
                         callback_specs,
-                        is_synced=(
-                            is_partial_fields_update is False
-                            or when_field in update_fields
-                        ),
+                        is_synced=not is_partial_fields_update
+                        or when_field in update_fields,
                     ):
                         continue
                 elif when_any_field:
-                    any_condition_matched = False
-
-                    for field_name in when_any_field:
-                        if self._check_callback_conditions(
+                    any_condition_matched = any(
+                        self._check_callback_conditions(
                             field_name,
                             callback_specs,
-                            is_synced=(
-                                is_partial_fields_update is False
-                                or field_name in update_fields
-                            ),
-                        ):
-                            any_condition_matched = True
-                            break
+                            is_synced=not is_partial_fields_update
+                            or field_name in update_fields,
+                        )
+                        for field_name in when_any_field
+                    )
 
                     if not any_condition_matched:
                         continue
@@ -306,13 +301,11 @@ class LifecycleModelMixin(object):
         if not self._check_was_condition(field_name, specs):
             return False
 
-        if not self._check_was_not_condition(field_name, specs):
-            return False
-
-        if not self._check_is_not_condition(field_name, specs):
-            return False
-
-        return True
+        return (
+            bool(self._check_is_not_condition(field_name, specs))
+            if self._check_was_not_condition(field_name, specs)
+            else False
+        )
 
     def _check_has_changed(self, field_name: str, specs: HookConfig, is_synced: bool) -> bool:
         if not is_synced:
@@ -364,9 +357,7 @@ class LifecycleModelMixin(object):
         for name in dir(cls):
             attr = getattr(cls, name, None)
 
-            if attr and (
-                isinstance(attr, property) or isinstance(attr, cached_property)
-            ):
+            if attr and (isinstance(attr, (property, cached_property))):
                 property_names.append(name)
 
         return property_names
@@ -403,8 +394,8 @@ class LifecycleModelMixin(object):
                 # Skip fields which don't provide a `get_internal_type` method, e.g. GenericForeignKey
                 continue
             else:
-                if internal_type == "ForeignKey" or internal_type == "OneToOneField":
-                    names.append(f.name + "_id")
+                if internal_type in ["ForeignKey", "OneToOneField"]:
+                    names.append(f"{f.name}_id")
 
         return names
 

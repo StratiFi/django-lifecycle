@@ -18,7 +18,8 @@ class AbstractHookedMethod(ABC):
         ...
 
     def __lt__(self, other):
-        if not isinstance(other, AbstractHookedMethod):
-            return NotImplemented
-
-        return self.priority < other.priority
+        return (
+            self.priority < other.priority
+            if isinstance(other, AbstractHookedMethod)
+            else NotImplemented
+        )

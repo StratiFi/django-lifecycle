@@ -30,8 +30,9 @@ class HookConfig(Validations):
     def validate_hook(self, value, **kwargs):
         if value not in VALID_HOOKS:
             raise DjangoLifeCycleException(
-                "%s is not a valid hook; must be one of %s" % (hook, VALID_HOOKS)
+                f"{hook} is not a valid hook; must be one of {VALID_HOOKS}"
             )
+
 
         return value
 
@@ -106,10 +107,11 @@ class HookConfig(Validations):
         self.validate_on_commit_only_for_after_hooks()
 
     def __lt__(self, other):
-        if not isinstance(other, HookConfig):
-            return NotImplemented
-
-        return self.priority < other.priority
+        return (
+            self.priority < other.priority
+            if isinstance(other, HookConfig)
+            else NotImplemented
+        )
 
     def __call__(self, hooked_method):
         if not hasattr(hooked_method, "_hooked"):

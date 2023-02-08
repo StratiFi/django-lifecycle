@@ -13,8 +13,8 @@ def get_metadata(package, field):
     """
     init_py = codecs.open(os.path.join(package, "__init__.py"), encoding="utf-8").read()
     return re.search(
-        "^__{}__ = ['\"]([^'\"]+)['\"]".format(field), init_py, re.MULTILINE
-    ).group(1)
+        f"""^__{field}__ = ['\"]([^'\"]+)['\"]""", init_py, re.MULTILINE
+    )[1]
 
 
 def readme():
